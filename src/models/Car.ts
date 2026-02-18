@@ -28,6 +28,36 @@ export interface ICar extends Document {
     }[];
 }
 
+const basePickupDropoffLocations = [
+    'International Airport SSR',
+    'Balaclava',
+    'Beau Champ',
+    'Bel ombre',
+    'Belle Mare',
+    'Curepipe',
+    'Ebene/Trianon',
+    'Flic en Flacq',
+    'Grand Baie',
+    'Grand Gaube',
+    'Le Morne',
+    'Mahebourg',
+    'Pereybere',
+    'Pointe aux Canonniers',
+    'Pointe aux Piments',
+    'Port louis',
+    'Poste de Flacq',
+    'Poste Lafayette',
+    'Quatre Borne',
+    'Rivière du Rempart',
+    'Rivière Noir',
+    'Rose Hill',
+    'Trou aux Biches',
+    "Trou d'Eau Douce",
+    'Vacoas',
+];
+
+const randomFee = () => Math.floor(Math.random() * 401) + 100;
+
 const carSchema = new Schema<ICar>(
     {
         make: { type: String, required: true },
@@ -62,33 +92,12 @@ const carSchema = new Schema<ICar>(
                     dropOffFee: { type: Number, default: 0 },
                 },
             ],
-            default: [
-                { name: 'International Airport SSR', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Balaclava', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Beau Champ', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Bel ombre', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Belle Mare', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Curepipe', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Ebene/Trianon', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Flic en Flacq', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Grand Baie', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Grand Gaube', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Le Morne', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Mahebourg', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Pereybere', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Pointe aux Canonniers', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Pointe aux Piments', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Port louis', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Poste de Flacq', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Poste Lafayette', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Quatre Borne', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Rivière du Rempart', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Rivière Noir', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Rose Hill', pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Trou aux Biches', pickUpFee: 0, dropOffFee: 0 },
-                { name: "Trou d'Eau Douce", pickUpFee: 0, dropOffFee: 0 },
-                { name: 'Vacoas', pickUpFee: 0, dropOffFee: 0 },
-            ],
+            default: () =>
+                basePickupDropoffLocations.map((name) => ({
+                    name,
+                    pickUpFee: randomFee(),
+                    dropOffFee: randomFee(),
+                })),
         },
     },
     {

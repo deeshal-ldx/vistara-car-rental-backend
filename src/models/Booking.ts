@@ -36,6 +36,13 @@ export interface IBooking extends Document {
         minOrderValue?: number;
         discountAmount: number;
     };
+    pickupDropoffFees?: {
+        pickupLocation: string;
+        dropoffLocation: string;
+        pickUpFee: number;
+        dropOffFee: number;
+        total: number;
+    };
 }
 
 const bookingSchema = new Schema<IBooking>(
@@ -111,6 +118,13 @@ const bookingSchema = new Schema<IBooking>(
             value: { type: Number },
             minOrderValue: { type: Number },
             discountAmount: { type: Number },
+        },
+        pickupDropoffFees: {
+            pickupLocation: { type: String },
+            dropoffLocation: { type: String },
+            pickUpFee: { type: Number },
+            dropOffFee: { type: Number },
+            total: { type: Number },
         },
     },
     {

@@ -51,9 +51,11 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
     let extrasTotal = 0;
     let protectionPlanTotal = 0;
     let promoDiscountTotal = 0;
+    let pickupDropoffTotal = 0;
     let processedExtras = [];
     let processedProtectionPlan: any = null;
     let processedPromo: any = null;
+    let pickupDropoffFees: any = null;
 
     // Calculate extra services price
     if (extraServices && extraServices.length > 0) {
@@ -107,7 +109,38 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
         };
     }
 
-    const subtotalBeforePromo = carTotal + extrasTotal + protectionPlanTotal;
+    if (pickupLocation || dropoffLocation) {
+        const locations = car.pickupDropoffLocations || [];
+
+        let pickUpFee = 0;
+        let dropOffFee = 0;
+
+        if (pickupLocation) {
+            const pickupEntry = locations.find((l) => l.name === pickupLocation);
+            if (pickupEntry) {
+                pickUpFee = pickupEntry.pickUpFee || 0;
+            }
+        }
+
+        if (dropoffLocation) {
+            const dropoffEntry = locations.find((l) => l.name === dropoffLocation);
+            if (dropoffEntry) {
+                dropOffFee = dropoffEntry.dropOffFee || 0;
+            }
+        }
+
+        pickupDropoffTotal = pickUpFee + dropOffFee;
+
+        pickupDropoffFees = {
+            pickupLocation,
+            dropoffLocation,
+            pickUpFee,
+            dropOffFee,
+            total: pickupDropoffTotal,
+        };
+    }
+
+    const subtotalBeforePromo = carTotal + extrasTotal + protectionPlanTotal + pickupDropoffTotal;
 
     if (promoCode) {
         const promo = await PromoCode.findOne({
@@ -169,6 +202,7 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
         extraServices: processedExtras,
         protectionPlan: processedProtectionPlan,
         promo: processedPromo,
+        pickupDropoffFees,
         paymentStatus: 'pending',
         status: 'pending',
     });
