@@ -21,6 +21,10 @@ export interface ICar extends Document {
     };
     features: string[];
     description?: string;
+    airportTransferPrice?: {
+        oneWay: number;
+        twoWay: number;
+    };
     pickupDropoffLocations?: {
         name: string;
         pickUpFee: number;
@@ -84,6 +88,10 @@ const carSchema = new Schema<ICar>(
         },
         features: [{ type: String }],
         description: { type: String },
+        airportTransferPrice: {
+            oneWay: { type: Number, default: 0 },
+            twoWay: { type: Number, default: 0 },
+        },
         pickupDropoffLocations: {
             type: [
                 {

@@ -9,7 +9,7 @@ interface DecodedToken {
     exp: number;
 }
 
-// Extend Express Request interface to include user
+
 declare global {
     namespace Express {
         interface Request {
@@ -21,26 +21,29 @@ declare global {
 export const protect = async (req: Request, res: Response, next: NextFunction) => {
     let token;
 
-    if (
-        req.headers.authorization &&
-        req.headers.authorization.startsWith('Bearer')
-    ) {
-        try {
+    try {
+        if (
+            req.headers.authorization &&
+            req.headers.authorization.startsWith('Bearer')
+        ) {
             token = req.headers.authorization.split(' ')[1];
-
             const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as DecodedToken;
 
-            req.user = await User.findById(decoded.id).select('-password') as IUser;
+            req.user = (await User.findById(decoded.id).select('-password')) as IUser;
 
-            next();
-        } catch (error) {
-            console.error(error);
-            res.status(401).json({ message: 'Not authorized, token failed' });
+            if (!req.user) {
+                return res.status(401).json({ message: 'Not authorized, user not found' });
+            }
+
+            return next();
         }
-    }
 
-    if (!token) {
-        res.status(401).json({ message: 'Not authorized, no token' });
+        if (!token) {
+            return res.status(401).json({ message: 'Not authorized, no token' });
+        }
+    } catch (error) {
+        console.error('Auth Middleware Error:', error);
+        return res.status(401).json({ message: 'Not authorized, token failed' });
     }
 };
 

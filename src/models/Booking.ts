@@ -6,6 +6,19 @@ export interface IBooking extends Document {
     startDate: Date;
     endDate: Date;
     totalPrice: number;
+    bookingType: 'rental' | 'airport_transfer';
+    airportTransferDetails?: {
+        transferType: 'one_way' | 'two_way';
+        numberOfTravelers: number;
+        customerName: string;
+        customerEmail: string;
+        customerPhone: string;
+        flightNumber?: string;
+        pickupTime?: string;
+        returnDate?: Date;
+        returnTime?: string;
+        additionalInfo?: string;
+    };
     paymentMethod: 'stripe' | 'manual' | 'cash';
     paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
     status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
@@ -20,7 +33,7 @@ export interface IBooking extends Document {
     extraServices: {
         service: mongoose.Schema.Types.ObjectId;
         quantity: number;
-        priceAtBooking: number; // Snapshot of price
+        priceAtBooking: number; 
         total: number;
     }[];
     protectionPlan?: {
@@ -68,6 +81,23 @@ const bookingSchema = new Schema<IBooking>(
         totalPrice: {
             type: Number,
             required: true,
+        },
+        bookingType: {
+            type: String,
+            enum: ['rental', 'airport_transfer'],
+            default: 'rental',
+        },
+        airportTransferDetails: {
+            transferType: { type: String, enum: ['one_way', 'two_way'] },
+            numberOfTravelers: { type: Number },
+            customerName: { type: String },
+            customerEmail: { type: String },
+            customerPhone: { type: String },
+            flightNumber: { type: String },
+            pickupTime: { type: String },
+            returnDate: { type: Date },
+            returnTime: { type: String },
+            additionalInfo: { type: String },
         },
         paymentMethod: {
             type: String,

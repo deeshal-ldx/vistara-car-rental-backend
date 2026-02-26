@@ -7,6 +7,8 @@ export interface IPromoCode extends Document {
     expiryDate: Date;
     minOrderValue?: number;
     isActive: boolean;
+    maxUsage?: number;
+    usedCount: number;
 }
 
 const promoCodeSchema = new Schema<IPromoCode>(
@@ -37,6 +39,14 @@ const promoCodeSchema = new Schema<IPromoCode>(
         isActive: {
             type: Boolean,
             default: true,
+        },
+        maxUsage: {
+            type: Number,
+            default: 0,
+        },
+        usedCount: {
+            type: Number,
+            default: 0,
         },
     },
     {

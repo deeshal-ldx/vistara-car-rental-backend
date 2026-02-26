@@ -21,6 +21,8 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
         extraServices, // Array of { serviceId, quantity }
         protectionPlanId,
         promoCode,
+        bookingType, // 'rental' or 'airport_transfer'
+        airportTransferDetails,
     } = req.body;
 
     const car = await Car.findById(carId);
@@ -41,13 +43,43 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
 
     const diffDays = end.diff(start, 'days').days;
 
-    if (diffDays < 3) {
+    if (diffDays < 3 && (!bookingType || bookingType === 'rental')) {
         res.status(400).json({ message: 'Minimum booking duration is 3 days' });
         return;
     }
 
     // Calculate car price
-    let carTotal = Math.round(diffDays) * car.pricePerDay;
+    let carTotal = 0;
+    const isTransfer = bookingType === 'airport_transfer';
+
+    if (isTransfer) {
+        if (
+            !airportTransferDetails ||
+            !airportTransferDetails.transferType ||
+            !airportTransferDetails.customerName ||
+            !airportTransferDetails.customerEmail ||
+            !airportTransferDetails.customerPhone
+        ) {
+            res.status(400).json({
+                message: 'Airport transfer details (type, name, email, phone) are required',
+            });
+            return;
+        }
+
+        const transferPrice = car.airportTransferPrice;
+        if (!transferPrice) {
+            res.status(400).json({ message: 'This car does not support airport transfers' });
+            return;
+        }
+
+        carTotal =
+            airportTransferDetails.transferType === 'one_way'
+                ? transferPrice.oneWay
+                : transferPrice.twoWay;
+    } else {
+        carTotal = Math.round(diffDays) * car.pricePerDay;
+    }
+
     let extrasTotal = 0;
     let protectionPlanTotal = 0;
     let promoDiscountTotal = 0;
@@ -109,7 +141,7 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
         };
     }
 
-    if (pickupLocation || dropoffLocation) {
+    if ((pickupLocation || dropoffLocation) && !isTransfer) {
         const locations = car.pickupDropoffLocations || [];
 
         let pickUpFee = 0;
@@ -158,6 +190,11 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
             return;
         }
 
+        if (promo.maxUsage && promo.usedCount >= promo.maxUsage) {
+            res.status(400).json({ message: 'Promo code usage limit reached' });
+            return;
+        }
+
         if (promo.minOrderValue && subtotalBeforePromo < promo.minOrderValue) {
             res.status(400).json({
                 message: `Minimum order value of ${promo.minOrderValue} required`,
@@ -177,6 +214,9 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
         }
 
         promoDiscountTotal = discountAmount;
+
+        promo.usedCount += 1;
+        await promo.save();
 
         processedPromo = {
             code: promo.code,
@@ -203,6 +243,8 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
         protectionPlan: processedProtectionPlan,
         promo: processedPromo,
         pickupDropoffFees,
+        bookingType: bookingType || 'rental',
+        airportTransferDetails: isTransfer ? airportTransferDetails : undefined,
         paymentStatus: 'pending',
         status: 'pending',
     });
@@ -211,26 +253,184 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
     res.status(201).json(createdBooking);
 };
 
-// @desc    Get all bookings
+// @desc    Get all bookings with filters and pagination
 // @route   GET /api/v1/bookings
 // @access  Private (Admin: all, User: theirs)
 export const getBookings = async (req: Request, res: Response) => {
-    let bookings;
+    const {
+        status,
+        paymentStatus,
+        carId,
+        userId,
+        pickupLocation,
+        dropoffLocation,
+        startDateFrom,
+        startDateTo,
+        bookingDate, // Specific date to check active bookings
+        bookingType,
+        search,
+        page = '1',
+        limit = '10',
+        sortBy,
+        sortOrder,
+    } = req.query as {
+        status?: string;
+        paymentStatus?: string;
+        carId?: string;
+        userId?: string;
+        pickupLocation?: string;
+        dropoffLocation?: string;
+        startDateFrom?: string;
+        startDateTo?: string;
+        bookingDate?: string;
+        bookingType?: string;
+        search?: string;
+        page?: string;
+        limit?: string;
+        sortBy?: string;
+        sortOrder?: string;
+    };
+
+    const pageNum = Math.max(parseInt(page || '1', 10) || 1, 1);
+    const limitNum = Math.max(parseInt(limit || '10', 10) || 10, 1);
+    const skip = (pageNum - 1) * limitNum;
+
+    const baseQuery: any = {};
 
     if (req.user?.role === 'admin') {
-        bookings = await Booking.find({})
-            .populate('user', 'name email')
-            .populate('car', 'make carModel')
-            .populate('extraServices.service', 'name')
-            .populate('protectionPlan.plan', 'name type price');
+        if (userId) {
+            baseQuery.user = userId;
+        }
     } else {
-        bookings = await Booking.find({ user: (req.user as any)._id })
-            .populate('car', 'make carModel')
-            .populate('extraServices.service', 'name')
-            .populate('protectionPlan.plan', 'name type price');
+        baseQuery.user = (req.user as any)._id;
     }
 
-    res.json(bookings);
+    if (status) {
+        const parts = status.split(',').map((s) => s.trim());
+        baseQuery.status = parts.length > 1 ? { $in: parts } : parts[0];
+    }
+
+    if (paymentStatus) {
+        const parts = paymentStatus.split(',').map((s) => s.trim());
+        baseQuery.paymentStatus = parts.length > 1 ? { $in: parts } : parts[0];
+    }
+
+    if (carId) {
+        baseQuery.car = carId;
+    }
+
+    if (bookingType) {
+        baseQuery.bookingType = bookingType;
+    }
+
+    if (pickupLocation) {
+        baseQuery.pickupLocation = { $regex: pickupLocation, $options: 'i' };
+    }
+
+    if (dropoffLocation) {
+        baseQuery.dropoffLocation = { $regex: dropoffLocation, $options: 'i' };
+    }
+
+    if (bookingDate) {
+        const date = DateTime.fromISO(bookingDate, { zone: 'UTC' }).startOf('day').toJSDate();
+        if (!isNaN(date.getTime())) {
+            baseQuery.startDate = { $lte: date };
+            baseQuery.endDate = { $gte: date };
+        }
+    } else if (startDateFrom || startDateTo) {
+        baseQuery.startDate = {};
+        if (startDateFrom) {
+            const from = DateTime.fromISO(startDateFrom, { zone: 'UTC' }).startOf('day').toJSDate();
+            if (!isNaN(from.getTime())) {
+                baseQuery.startDate.$gte = from;
+            }
+        }
+        if (startDateTo) {
+            const to = DateTime.fromISO(startDateTo, { zone: 'UTC' }).endOf('day').toJSDate();
+            if (!isNaN(to.getTime())) {
+                baseQuery.startDate.$lte = to;
+            }
+        }
+        if (Object.keys(baseQuery.startDate).length === 0) {
+            delete baseQuery.startDate;
+        }
+    }
+
+    const andConditions: any[] = [baseQuery];
+
+    if (search) {
+        const regex = new RegExp(search, 'i');
+        andConditions.push({
+            $or: [
+                { 'driverDetails.name': regex },
+                { pickupLocation: regex },
+                { dropoffLocation: regex },
+                { 'promo.code': regex },
+            ],
+        });
+    }
+
+    const finalQuery = andConditions.length > 1 ? { $and: andConditions } : baseQuery;
+
+    const sortField = sortBy || 'createdAt';
+    const sortDir = sortOrder === 'asc' ? 1 : -1;
+    const sort: any = { [sortField]: sortDir };
+
+    const total = await Booking.countDocuments(finalQuery);
+
+    // Calculate statistics for the filtered set
+    const stats = await Booking.aggregate([
+        { $match: finalQuery },
+        {
+            $group: {
+                _id: null,
+                totalRevenue: { $sum: '$totalPrice' },
+                pendingCount: {
+                    $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] },
+                },
+                confirmedCount: {
+                    $sum: { $cond: [{ $eq: ['$status', 'confirmed'] }, 1, 0] },
+                },
+                completedCount: {
+                    $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] },
+                },
+                cancelledCount: {
+                    $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] },
+                },
+                paidRevenue: {
+                    $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$totalPrice', 0] },
+                },
+            },
+        },
+    ]);
+
+    const query = Booking.find(finalQuery)
+        .sort(sort)
+        .skip(skip)
+        .limit(limitNum)
+        .populate('user', 'name email')
+        .populate('car', 'make carModel')
+        .populate('extraServices.service', 'name')
+        .populate('protectionPlan.plan', 'name type price');
+
+    const bookings = await query.exec();
+
+    res.json({
+        success: true,
+        total,
+        page: pageNum,
+        pages: Math.ceil(total / limitNum),
+        limit: limitNum,
+        stats: stats[0] || {
+            totalRevenue: 0,
+            pendingCount: 0,
+            confirmedCount: 0,
+            completedCount: 0,
+            cancelledCount: 0,
+            paidRevenue: 0,
+        },
+        data: bookings,
+    });
 };
 
 // @desc    Get booking by ID
@@ -275,4 +475,59 @@ export const updateBookingStatus = async (req: Request, res: Response) => {
     } else {
         res.status(404).json({ message: 'Booking not found' });
     }
+};
+
+export const getUserCurrentBookings = async (req: Request, res: Response) => {
+    const now = DateTime.utc().startOf('day').toJSDate();
+
+    const bookings = await Booking.find({
+        user: (req.user as any)._id,
+        status: { $in: ['pending', 'confirmed'] },
+        $or: [
+            { startDate: { $gte: now } },
+            { startDate: { $lte: now }, endDate: { $gte: now } },
+        ],
+    })
+        .sort({ startDate: 1 })
+        .populate('car', 'make carModel images location')
+        .populate('extraServices.service', 'name')
+        .populate('protectionPlan.plan', 'name type price');
+
+    res.json(bookings);
+};
+
+export const getUserPastBookings = async (req: Request, res: Response) => {
+    const now = DateTime.utc().startOf('day').toJSDate();
+
+    const bookings = await Booking.find({
+        user: (req.user as any)._id,
+        $or: [
+            { endDate: { $lt: now } },
+            { status: { $in: ['completed', 'cancelled'] } },
+        ],
+    })
+        .sort({ startDate: -1 })
+        .populate('car', 'make carModel images location')
+        .populate('extraServices.service', 'name')
+        .populate('protectionPlan.plan', 'name type price');
+
+    res.json(bookings);
+};
+
+export const getUserBookingDetails = async (req: Request, res: Response): Promise<void> => {
+    const booking = await Booking.findOne({
+        _id: req.params.id,
+        user: (req.user as any)._id,
+    })
+        .populate('user', 'name email')
+        .populate('car', 'make carModel images location')
+        .populate('extraServices.service', 'name description type')
+        .populate('protectionPlan.plan', 'name type price');
+
+    if (!booking) {
+        res.status(404).json({ message: 'Booking not found' });
+        return;
+    }
+
+    res.json(booking);
 };

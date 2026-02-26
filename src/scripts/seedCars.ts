@@ -29,6 +29,10 @@ const sampleCars = [
         },
         features: ['GPS', 'Bluetooth', 'Reverse Camera'],
         description: 'Reliable and comfortable sedan for city and highway driving.',
+        airportTransferPrice: {
+            oneWay: 1200,
+            twoWay: 2200,
+        },
     },
     {
         make: 'Honda',
@@ -52,6 +56,10 @@ const sampleCars = [
         },
         features: ['All-Wheel Drive', 'Sunroof', 'Apple CarPlay'],
         description: 'Spacious SUV perfect for family trips.',
+        airportTransferPrice: {
+            oneWay: 1500,
+            twoWay: 2800,
+        },
     },
     {
         make: 'Tesla',
@@ -75,6 +83,10 @@ const sampleCars = [
         },
         features: ['Autopilot', 'Supercharging', 'Premium Audio'],
         description: 'Experience the future of driving with this fully electric car.',
+        airportTransferPrice: {
+            oneWay: 2000,
+            twoWay: 3800,
+        },
     },
     {
         make: 'Ford',
@@ -98,6 +110,10 @@ const sampleCars = [
         },
         features: ['Convertible Top', 'Sport Mode', 'Premium Sound'],
         description: 'Feel the wind in your hair with this iconic American muscle car.',
+        airportTransferPrice: {
+            oneWay: 2500,
+            twoWay: 4500,
+        },
     },
     {
         make: 'BMW',

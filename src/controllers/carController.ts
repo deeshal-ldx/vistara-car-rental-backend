@@ -22,9 +22,14 @@ export const getCars = async (req: Request, res: Response) => {
         features,
         pickupLocation,
         dropoffLocation,
+        supportsTransfer,
     } = req.query;
 
     let query: any = { isAvailable: true };
+
+    if (supportsTransfer === 'true') {
+        query['airportTransferPrice.oneWay'] = { $gt: 0 };
+    }
 
     // Location filter (Case insensitive)
     if (location) {
@@ -128,6 +133,99 @@ export const getCars = async (req: Request, res: Response) => {
 
         const cars = await Car.find(mongoQuery);
         res.json({ success: true, count: cars.length, data: cars });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Get all cars for admin with stats and full filters
+// @route   GET /api/v1/cars/admin
+// @access  Private/Admin
+export const getAdminCars = async (req: Request, res: Response) => {
+    const {
+        status, // 'available', 'booked', 'all'
+        type,
+        search,
+        page = '1',
+        limit = '10',
+    } = req.query as {
+        status?: 'available' | 'booked' | 'all';
+        type?: string;
+        search?: string;
+        page?: string;
+        limit?: string;
+    };
+
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
+    const skip = (pageNum - 1) * limitNum;
+
+    const query: any = {};
+
+    // Type filter
+    if (type) {
+        query.type = type;
+    }
+
+    // Search filter (Make or Model)
+    if (search) {
+        const regex = new RegExp(search, 'i');
+        query.$or = [{ make: regex }, { carModel: regex }];
+    }
+
+    try {
+        const now = DateTime.utc().toJSDate();
+
+        // 1. Find all currently booked car IDs
+        const activeBookings = await Booking.find({
+            status: { $in: ['confirmed', 'pending'] },
+            startDate: { $lte: now },
+            endDate: { $gte: now },
+        }).select('car');
+
+        const bookedCarIds = activeBookings.map((b) => b.car.toString());
+        const uniqueBookedCarIds = [...new Set(bookedCarIds)];
+
+        // 2. Handle 'status' filter (available vs booked)
+        if (status === 'booked') {
+            query._id = { $in: uniqueBookedCarIds };
+        } else if (status === 'available') {
+            query._id = { $nin: uniqueBookedCarIds };
+            query.isAvailable = true; // Also respect the manual maintenance flag
+        }
+
+        const total = await Car.countDocuments(query);
+
+        const cars = await Car.find(query)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limitNum)
+            .lean();
+
+        // 3. Add dynamic 'isBooked' flag to each car object
+        const carsWithStatus = cars.map((car) => ({
+            ...car,
+            isBooked: uniqueBookedCarIds.includes(car._id.toString()),
+        }));
+
+        // 4. Calculate stats for the dashboard
+        const allCarsCount = await Car.countDocuments();
+        const stats = {
+            totalCars: allCarsCount,
+            bookedCars: uniqueBookedCarIds.length,
+            availableCars: allCarsCount - uniqueBookedCarIds.length,
+        };
+
+        res.json({
+            success: true,
+            total,
+            page: pageNum,
+            pages: Math.ceil(total / limitNum),
+            limit: limitNum,
+            stats,
+            data: carsWithStatus,
+        });
     } catch (error) {
         console.error(error);
         res.status(500).json({ message: 'Server Error' });
