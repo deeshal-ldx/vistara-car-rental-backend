@@ -444,7 +444,7 @@ export const getBookingById = async (req: Request, res: Response): Promise<void>
         .populate('protectionPlan.plan', 'name type price');
 
     if (booking) {
-        // Check if admin or owner
+       
         if (
             req.user?.role !== 'admin' &&
             (booking.user as any)._id.toString() !== (req.user as any)._id.toString()
