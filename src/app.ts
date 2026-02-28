@@ -11,6 +11,7 @@ import paymentRoutes from './routes/paymentRoutes';
 import adminRoutes from './routes/adminRoutes';
 import extraServiceRoutes from './routes/extraServiceRoutes';
 import protectionPlanRoutes from './routes/protectionPlanRoutes';
+import leadRoutes from './routes/leadRoutes';
 
 const app: Application = express();
 
@@ -29,6 +30,7 @@ app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/extras', extraServiceRoutes);
 app.use('/api/v1/protection-plans', protectionPlanRoutes);
+app.use('/api/v1/leads', leadRoutes);
 
 // Health Check
 app.get('/api/v1/health', (req: Request, res: Response) => {
