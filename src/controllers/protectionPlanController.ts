@@ -2,8 +2,18 @@ import { Request, Response } from 'express';
 import ProtectionPlan from '../models/ProtectionPlan';
 
 export const getProtectionPlans = async (req: Request, res: Response) => {
-    const plans = await ProtectionPlan.find({ isActive: true });
+    const plans = await ProtectionPlan.find({});
     res.json(plans);
+};
+
+export const getProtectionPlanById = async (req: Request, res: Response) => {
+    const plan = await ProtectionPlan.findById(req.params.id);
+
+    if (plan) {
+        res.json(plan);
+    } else {
+        res.status(404).json({ message: 'Protection plan not found' });
+    }
 };
 
 export const createProtectionPlan = async (req: Request, res: Response) => {

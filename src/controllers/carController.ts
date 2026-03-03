@@ -347,3 +347,23 @@ export const deleteCar = async (req: Request, res: Response) => {
         res.status(404).json({ message: 'Car not found' });
     }
 };
+
+// @desc    Get all unique car locations
+// @route   GET /api/v1/cars/locations
+// @access  Public
+export const getLocations = async (req: Request, res: Response) => {
+    try {
+
+        const locations = await Car.distinct('location');
+
+        const pickupDropoffLocations = await Car.distinct('pickupDropoffLocations.name');
+
+
+        const allUniqueLocations = Array.from(new Set([...locations, ...pickupDropoffLocations])).sort();
+
+        res.json({ success: true, data: allUniqueLocations });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};

@@ -1,6 +1,7 @@
 import express from 'express';
 import {
     getProtectionPlans,
+    getProtectionPlanById,
     createProtectionPlan,
     updateProtectionPlan,
     deleteProtectionPlan,
@@ -12,6 +13,7 @@ const router = express.Router();
 router.route('/').get(getProtectionPlans).post(protect, admin, createProtectionPlan);
 router
     .route('/:id')
+    .get(getProtectionPlanById)
     .put(protect, admin, updateProtectionPlan)
     .delete(protect, admin, deleteProtectionPlan);
 
