@@ -41,7 +41,7 @@ app.get('/api/v1/health', (req: Request, res: Response) => {
 
 // Basic Route
 app.get('/', (req: Request, res: Response) => {
-    res.send('API is running...');
+    res.send('API is running....');
 });
 
 export default app;
