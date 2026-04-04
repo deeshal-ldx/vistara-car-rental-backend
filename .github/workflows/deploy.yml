@@ -39,7 +39,7 @@ jobs:
             npm install
 
             echo "🔄 Restarting PM2 process..."
-            pm2 restart vistara-car-rental-backend || pm2 start dist/server.js --name vistara-car-rental-backend
+            pm2 restart vistara-car-rental-backend || pm2 start npm --name "vistara-car-rental-backend" -- start
 
             echo "💾 Saving PM2 process list..."
             pm2 save
