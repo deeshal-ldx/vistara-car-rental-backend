@@ -1,0 +1,49 @@
+name: Deploy to Hetzner VPS
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout code 
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Step 2: Setup SSH
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+
+      # Step 3: Deploy to VPS
+      - name: Deploy via SSH
+        run: |
+          ssh ${{ secrets.USER }}@${{ secrets.HOST }} << 'EOF'
+
+            set -e
+
+            echo "🚀 Navigating to app directory..."
+            cd ${{ secrets.APP_DIR }}
+
+            echo "📥 Pulling latest code..."
+            git pull origin main
+
+            echo "📦 Installing dependencies..."
+            npm install
+
+            echo "🔄 Restarting PM2 process..."
+            pm2 restart vistara-car-rental-backend || pm2 start dist/server.js --name vistara-car-rental-backend
+
+            echo "💾 Saving PM2 process list..."
+            pm2 save
+
+            echo "✅ Deployment completed!"
+
+          EOF
