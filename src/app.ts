@@ -18,7 +18,31 @@ const app: Application = express();
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+const defaultAllowedOrigins = [
+    'https://api.vistaracarrentalmauritius.com',
+    'https://vistaracarrentalmauritius.com',
+    'https://www.vistaracarrentalmauritius.com',
+    'http://localhost:3000',
+    'http://localhost:5173',
+];
+
+const envAllowedOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+const allowedOrigins = Array.from(new Set([...defaultAllowedOrigins, ...envAllowedOrigins]));
+
+app.use(
+    cors({
+        origin(origin, callback) {
+            if (!origin) return callback(null, true);
+            if (allowedOrigins.includes(origin)) return callback(null, true);
+            return callback(new Error(`CORS blocked for origin: ${origin}`));
+        },
+        credentials: true,
+    })
+);
 app.use(helmet());
 app.use(morgan('dev'));
 
