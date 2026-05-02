@@ -2,6 +2,8 @@ import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import path from 'path';
+import fs from 'fs';
 
 import authRoutes from './routes/authRoutes';
 import carRoutes from './routes/carRoutes';
@@ -13,6 +15,7 @@ import extraServiceRoutes from './routes/extraServiceRoutes';
 import protectionPlanRoutes from './routes/protectionPlanRoutes';
 import leadRoutes from './routes/leadRoutes';
 import locationRoutes from './routes/locationRoutes';
+import uploadRoutes from './routes/uploadRoutes';
 
 const app: Application = express();
 
@@ -46,6 +49,10 @@ app.use(
 app.use(helmet());
 app.use(morgan('dev'));
 
+const uploadsDir = path.join(process.cwd(), 'uploads');
+fs.mkdirSync(uploadsDir, { recursive: true });
+app.use('/uploads', express.static(uploadsDir));
+
 // Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/cars', carRoutes);
@@ -57,6 +64,7 @@ app.use('/api/v1/extras', extraServiceRoutes);
 app.use('/api/v1/protection-plans', protectionPlanRoutes);
 app.use('/api/v1/leads', leadRoutes);
 app.use('/api/v1/locations', locationRoutes);
+app.use('/api/v1/uploads', uploadRoutes);
 
 // Health Check
 app.get('/api/v1/health', (req: Request, res: Response) => {

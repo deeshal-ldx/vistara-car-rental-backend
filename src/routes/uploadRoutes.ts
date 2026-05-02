@@ -3,19 +3,8 @@ import multer from 'multer';
 import path from 'path';
 import crypto from 'crypto';
 import fs from 'fs';
-import {
-    getCars,
-    getCarById,
-    getAdminCars,
-    createCar,
-    updateCar,
-    deleteCar,
-    getLocations,
-    uploadCarImages,
-    uploadCarFeaturedImage,
-} from '../controllers/carController';
 import { protect, admin } from '../middlewares/authMiddleware';
-import { getSearchAbleLocations } from '../controllers/locationController';
+import { uploadMultipleImages, uploadSingleImage } from '../controllers/uploadController';
 
 const router = express.Router();
 
@@ -48,15 +37,8 @@ const upload = multer({
     limits: { fileSize: 5 * 1024 * 1024 },
 });
 
-router.route('/').get(getCars).post(protect, admin, createCar);
-router.get('/locations', getSearchAbleLocations);
-router.get('/admin', protect, admin, getAdminCars);
-router.post('/:id/images', protect, admin, upload.array('images', 10), uploadCarImages);
-router.post('/:id/featured-image', protect, admin, upload.single('image'), uploadCarFeaturedImage);
-router
-    .route('/:id')
-    .get(getCarById)
-    .put(protect, admin, updateCar)
-    .delete(protect, admin, deleteCar);
+router.post('/image', protect, admin, upload.single('image'), uploadSingleImage);
+router.post('/images', protect, admin, upload.array('images', 10), uploadMultipleImages);
 
 export default router;
+

@@ -348,6 +348,61 @@ export const deleteCar = async (req: Request, res: Response) => {
     }
 };
 
+export const uploadCarImages = async (req: Request, res: Response): Promise<void> => {
+    const car = await Car.findById(req.params.id);
+
+    if (!car) {
+        res.status(404).json({ message: 'Car not found' });
+        return;
+    }
+
+    const files = (req as any).files as Express.Multer.File[] | undefined;
+
+    if (!files || files.length === 0) {
+        res.status(400).json({ message: 'No images uploaded' });
+        return;
+    }
+
+    const forwardedProto = (req.headers['x-forwarded-proto'] as string) || '';
+    const protocol = forwardedProto ? forwardedProto.split(',')[0].trim() : req.protocol;
+    const host = req.get('host');
+
+    const urls = files.map((file) =>
+        host ? `${protocol}://${host}/uploads/${file.filename}` : `/uploads/${file.filename}`
+    );
+
+    car.images = [...(car.images || []), ...urls];
+    const updated = await car.save();
+
+    res.status(200).json({ success: true, data: updated });
+};
+
+export const uploadCarFeaturedImage = async (req: Request, res: Response): Promise<void> => {
+    const car = await Car.findById(req.params.id);
+
+    if (!car) {
+        res.status(404).json({ message: 'Car not found' });
+        return;
+    }
+
+    const file = (req as any).file as Express.Multer.File | undefined;
+
+    if (!file) {
+        res.status(400).json({ message: 'No image uploaded' });
+        return;
+    }
+
+    const forwardedProto = (req.headers['x-forwarded-proto'] as string) || '';
+    const protocol = forwardedProto ? forwardedProto.split(',')[0].trim() : req.protocol;
+    const host = req.get('host');
+    const url = host ? `${protocol}://${host}/uploads/${file.filename}` : `/uploads/${file.filename}`;
+
+    car.featuredImage = url;
+    const updated = await car.save();
+
+    res.status(200).json({ success: true, data: updated });
+};
+
 // @desc    Get all unique car locations
 // @route   GET /api/v1/cars/locations
 // @access  Public
