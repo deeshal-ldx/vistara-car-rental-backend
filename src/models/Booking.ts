@@ -19,7 +19,7 @@ export interface IBooking extends Document {
         returnTime?: string;
         additionalInfo?: string;
     };
-    paymentMethod: 'stripe' | 'manual' | 'cash';
+    paymentMethod: 'mobipaid' | 'manual' | 'cash';
     paymentStatus: 'pending' | 'paid' | 'failed' | 'refunded';
     status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
     driverDetails: {
@@ -101,7 +101,7 @@ const bookingSchema = new Schema<IBooking>(
         },
         paymentMethod: {
             type: String,
-            enum: ['stripe', 'manual', 'cash'],
+            enum: ['mobipaid', 'manual', 'cash'],
             required: true,
         },
         paymentStatus: {

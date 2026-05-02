@@ -1,115 +1,155 @@
 import { Request, Response } from 'express';
-import Stripe from 'stripe';
+import mongoose from 'mongoose';
 import Transaction from '../models/Transaction';
 import Booking from '../models/Booking';
 
-const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const mobiPaidApiKey = process.env.MOBI_PAID_API_KEY;
+const mobiPaidMode = process.env.MOBI_PAID_MODE || 'test';
+const mobiPaidBaseUrl = mobiPaidMode === 'live' ? 'https://live.mobipaid.io' : 'https://test.mobipaid.io';
 
-if (!stripeSecretKey) {
-    console.warn('STRIPE_SECRET_KEY is not set. Stripe payments are disabled.');
+if (!mobiPaidApiKey) {
+    console.warn('MOBI_PAID_API_KEY is not set. MobiPaid payments are disabled.');
 }
 
-const stripe = stripeSecretKey
-    ? new Stripe(stripeSecretKey, {
-          // @ts-ignore
-          apiVersion: '2025-01-27.acacia',
-      })
-    : null;
-
-// @desc    Create Stripe Payment Intent
+// @desc    Create MobiPaid Payment Request
 // @route   POST /api/v1/payments/create-intent
 // @access  Private
-export const createPaymentIntent = async (req: Request, res: Response) => {
+export const createMobiPaidPaymentRequest = async (req: Request, res: Response) => {
     const { bookingId } = req.body;
 
-    if (!stripe) {
-        res.status(500).json({ message: 'Stripe is not configured on the server' });
+    if (!mobiPaidApiKey) {
+        res.status(500).json({ message: 'MobiPaid is not configured on the server' });
         return;
     }
 
+    console.log("api key", mobiPaidApiKey);
+    console.log("mode", mobiPaidMode);
+
     const booking = await Booking.findById(bookingId);
+
+    console.log('Booking:', booking);
     if (!booking) {
         res.status(404).json({ message: 'Booking not found' });
         return;
     }
 
-    // Ensure amount is correct (Stripe uses cents) and based on booking totalPrice
-    const paymentAmount = Math.round(booking.totalPrice * 100);
+    const user = req.user as any;
 
-    const paymentIntent = await stripe.paymentIntents.create({
-        amount: paymentAmount,
-        currency: 'mur',
-        automatic_payment_methods: {
-            enabled: true,
-        },
-        metadata: { bookingId, userId: (req.user as any)._id.toString() },
-    });
+    const payload = {
+        request_methods: ['WEB'],
+        reference_number: booking._id.toString(),
+        email: user.email,
+        customer_first_name: user.name?.split(' ')[0] || 'Customer',
+        customer_last_name: user.name?.split(' ').slice(1).join(' ') || '',
+        redirect_url: `${process.env.FRONTEND_URL}/bookings/${booking._id}?payment=processing`,
+        response_url: `${process.env.BACKEND_URL}/api/v1/payments/mobipaid-webhook`,
+        cancel_url: `${process.env.FRONTEND_URL}/bookings/${booking._id}?payment=cancelled`,
+        fixed_amount: true,
+        currency: 'MUR',
+        amount: booking.totalPrice,
+        payment_type: 'DB',
+        payment_methods: [],
+    };
 
-    res.json({
-        clientSecret: paymentIntent.client_secret,
-        transactionId: paymentIntent.id,
-    });
+    console.log('Payload:', payload);
+
+    try {
+        const response = await fetch(`${mobiPaidBaseUrl}/v2/payment-requests/`, {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${mobiPaidApiKey}`, // ✅ NOT Bearer
+    },
+    body: JSON.stringify({
+        access_key: mobiPaidApiKey, // ✅ ALSO REQUIRED
+        request_methods: ['WEB'],
+        reference_number: booking._id.toString(),
+        email: user.email,
+        customer_first_name: user.name?.split(' ')[0] || 'Customer',
+        customer_last_name: user.name?.split(' ').slice(1).join(' ') || '',
+        redirect_url: `${process.env.FRONTEND_URL}/bookings/${booking._id}?payment=processing`,
+        response_url: `${process.env.BACKEND_URL}/api/v1/payments/mobipaid-webhook`,
+        cancel_url: `${process.env.FRONTEND_URL}/bookings/${booking._id}?payment=cancelled`,
+        fixed_amount: true,
+        currency: 'MUR',
+        amount: booking.totalPrice,
+        payment_type: 'DB',
+        payment_methods: [],
+    }),
+});
+
+        const data = await response.json();
+        console.log('MobiPaid response:', data);
+
+        if (!response.ok || data.result === 'failed') {
+            console.error('MobiPaid error:', data);
+            res.status(400).json({ message: data.error_message || 'Failed to create payment request' });
+            return;
+        }
+
+        res.json({
+            paymentUrl: data.short_url || data.long_url,
+            qrCodeLink: data.qrcode_link,
+            transactionId: data.transaction_id,
+        });
+    } catch (error: any) {
+        console.error('MobiPaid request failed:', error);
+        res.status(500).json({ message: 'Failed to connect to MobiPaid' });
+    }
 };
 
-// @desc    Confirm Stripe payment and mark booking as paid
-// @route   POST /api/v1/payments/confirm
-// @access  Private
-export const confirmStripePayment = async (req: Request, res: Response) => {
-    const { bookingId, paymentIntentId } = req.body;
-
-    if (!stripe) {
-        res.status(500).json({ message: 'Stripe is not configured on the server' });
+// @desc    Handle MobiPaid Payment Webhook
+// @route   POST /api/v1/payments/mobipaid-webhook
+// @access  Public (MobiPaid callback)
+export const handleMobiPaidWebhook = async (req: Request, res: Response) => {
+    const responseParam = req.body.response;
+    if (!responseParam) {
+        res.status(400).send('Missing response');
         return;
     }
 
-    if (!bookingId || !paymentIntentId) {
-        res.status(400).json({ message: 'bookingId and paymentIntentId are required' });
+    let paymentResponse;
+    try {
+        paymentResponse = JSON.parse(responseParam);
+    } catch (e) {
+        res.status(400).send('Invalid response JSON');
         return;
     }
 
-    const booking = await Booking.findById(bookingId);
+    const { result, result_code, transaction_id, reference_number, amount } = paymentResponse;
 
+    const isSuccess = result === 'ACK' && 
+        (result_code === '000.000.000' || result_code === '000.100.110');
+
+    if (!isSuccess) {
+        res.status(200).send('OK');
+        return;
+    }
+
+    const booking = await Booking.findById(reference_number);
     if (!booking) {
-        res.status(404).json({ message: 'Booking not found' });
+        res.status(200).send('OK');
         return;
     }
 
-    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-
-    if (paymentIntent.status !== 'succeeded') {
-        res.status(400).json({ message: 'Payment not completed' });
+    if (parseFloat(amount) !== booking.totalPrice) {
+        res.status(200).send('OK');
         return;
     }
 
-    if (
-        paymentIntent.metadata?.bookingId &&
-        paymentIntent.metadata.bookingId.toString() !== bookingId.toString()
-    ) {
-        res.status(400).json({ message: 'Payment does not belong to this booking' });
-        return;
-    }
-
-    const expectedAmount = Math.round(booking.totalPrice * 100);
-    if (paymentIntent.amount !== expectedAmount) {
-        res.status(400).json({ message: 'Payment amount mismatch' });
-        return;
-    }
-
-    let transaction = await Transaction.findOne({ transactionId: paymentIntent.id });
-
-    const paidAmountRs = booking.totalPrice;
+    let transaction = await Transaction.findOne({ transactionId: transaction_id });
 
     if (transaction) {
         transaction.status = 'success';
-        transaction.amount = paidAmountRs;
+        transaction.amount = parseFloat(amount);
         await transaction.save();
     } else {
         transaction = await Transaction.create({
-            user: req.user?._id as any,
-            booking: bookingId,
-            amount: paidAmountRs,
-            paymentMethod: 'stripe',
-            transactionId: paymentIntent.id,
+            user: booking.user as any,
+            booking: booking._id as any,
+            amount: parseFloat(amount),
+            paymentMethod: 'mobipaid',
+            transactionId: transaction_id,
             status: 'success',
         });
     }
@@ -117,24 +157,21 @@ export const confirmStripePayment = async (req: Request, res: Response) => {
     booking.paymentStatus = 'paid';
     await booking.save();
 
-    res.json({ booking, transaction });
+    res.status(200).send('OK');
 };
 
-export const refundStripePaymentForBooking = async (req: Request, res: Response) => {
+// @desc    Refund MobiPaid Payment
+// @route   POST /api/v1/payments/refund
+// @access  Private/Admin
+export const refundMobiPaidPaymentForBooking = async (req: Request, res: Response) => {
     const { bookingId } = req.body;
 
-    if (!stripe) {
-        res.status(500).json({ message: 'Stripe is not configured on the server' });
-        return;
-    }
-
-    if (!bookingId) {
-        res.status(400).json({ message: 'bookingId is required' });
+    if (!mobiPaidApiKey) {
+        res.status(500).json({ message: 'MobiPaid is not configured on the server' });
         return;
     }
 
     const booking = await Booking.findById(bookingId);
-
     if (!booking) {
         res.status(404).json({ message: 'Booking not found' });
         return;
@@ -147,40 +184,58 @@ export const refundStripePaymentForBooking = async (req: Request, res: Response)
 
     const transaction = await Transaction.findOne({
         booking: bookingId,
-        paymentMethod: 'stripe',
+        paymentMethod: 'mobipaid',
         status: 'success',
     }).sort({ createdAt: -1 });
 
     if (!transaction || !transaction.transactionId) {
-        res.status(404).json({ message: 'No successful Stripe transaction found for this booking' });
+        res.status(404).json({ message: 'No successful MobiPaid transaction found' });
         return;
     }
 
     if (transaction.refundId) {
-        res.status(400).json({ message: 'Transaction already refunded' });
+        res.status(400).json({ message: 'Already refunded' });
         return;
     }
 
-    const refundAmountCents = Math.round(transaction.amount * 100);
+    try {
+        const refundResponse = await fetch(`${mobiPaidBaseUrl}/v2/payments/refund`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${mobiPaidApiKey}`,
+            },
+            body: JSON.stringify({
+                transaction_id: transaction.transactionId,
+                amount: transaction.amount,
+            }),
+        });
 
-    const refund = await stripe.refunds.create({
-        payment_intent: transaction.transactionId,
-        amount: refundAmountCents,
-    });
+        const refundData = await refundResponse.json();
 
-    transaction.refundId = refund.id;
-    transaction.refundAmount = transaction.amount;
-    transaction.refundStatus = refund.status as 'pending' | 'succeeded' | 'failed';
-    await transaction.save();
+        if (!refundResponse.ok || refundData.result === 'failed') {
+            console.error('MobiPaid refund error:', refundData);
+            res.status(400).json({ message: refundData.error_message || 'Refund failed' });
+            return;
+        }
 
-    booking.paymentStatus = 'refunded';
-    booking.status = 'cancelled';
-    await booking.save();
+        transaction.refundId = refundData.refund_id;
+        transaction.refundAmount = transaction.amount;
+        transaction.refundStatus = 'succeeded';
+        await transaction.save();
 
-    res.json({ booking, transaction, refund });
+        booking.paymentStatus = 'refunded';
+        booking.status = 'cancelled';
+        await booking.save();
+
+        res.json({ booking, transaction, refund: refundData });
+    } catch (error: any) {
+        console.error('MobiPaid refund request failed:', error);
+        res.status(500).json({ message: 'Failed to process refund' });
+    }
 };
 
-// @desc    Record manual payment (Bank transfer) or verify Stripe payment
+// @desc    Record manual payment or MobiPaid payment
 // @route   POST /api/v1/payments/record
 // @access  Private
 export const recordPayment = async (req: Request, res: Response) => {
@@ -201,10 +256,10 @@ export const recordPayment = async (req: Request, res: Response) => {
         paymentMethod,
         transactionId,
         proofImage,
-        status: paymentMethod === 'stripe' ? 'success' : 'pending',
+        status: paymentMethod === 'mobipaid' ? 'success' : 'pending',
     });
 
-    if (paymentMethod === 'stripe') {
+    if (paymentMethod === 'mobipaid') {
         booking.paymentStatus = 'paid';
         await booking.save();
     }
@@ -220,7 +275,7 @@ export const getTransactions = async (req: Request, res: Response) => {
     res.json(transactions);
 };
 
-// @desc    Update transaction status (for manual/bank transfer)
+// @desc    Update transaction status
 // @route   PUT /api/v1/payments/:id/status
 // @access  Private/Admin
 export const updateTransactionStatus = async (req: Request, res: Response) => {

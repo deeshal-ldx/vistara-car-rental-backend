@@ -4,9 +4,9 @@ export interface ITransaction extends Document {
     user: mongoose.Schema.Types.ObjectId;
     booking: mongoose.Schema.Types.ObjectId;
     amount: number;
-    paymentMethod: 'stripe' | 'manual' | 'cash';
+    paymentMethod: 'mobipaid' | 'manual' | 'cash';
     status: 'pending' | 'success' | 'failed';
-    transactionId?: string; // Stripe PaymentIntent ID
+    transactionId?: string; // MobiPaid transaction ID
     proofImage?: string; // For manual bank transfer
     refundId?: string;
     refundAmount?: number;
@@ -31,7 +31,7 @@ const transactionSchema = new Schema<ITransaction>(
         },
         paymentMethod: {
             type: String,
-            enum: ['stripe', 'manual', 'cash'],
+            enum: ['mobipaid', 'manual', 'cash'],
             required: true,
         },
         status: {

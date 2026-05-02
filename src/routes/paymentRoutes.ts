@@ -1,8 +1,8 @@
 import express from 'express';
 import {
-    createPaymentIntent,
-    confirmStripePayment,
-    refundStripePaymentForBooking,
+    createMobiPaidPaymentRequest,
+    handleMobiPaidWebhook,
+    refundMobiPaidPaymentForBooking,
     recordPayment,
     getTransactions,
     updateTransactionStatus,
@@ -11,9 +11,9 @@ import { protect, admin } from '../middlewares/authMiddleware';
 
 const router = express.Router();
 
-router.post('/create-intent', protect, createPaymentIntent);
-router.post('/confirm', protect, confirmStripePayment);
-router.post('/refund', protect, admin, refundStripePaymentForBooking);
+router.post('/create-intent', protect, createMobiPaidPaymentRequest);
+router.post('/mobipaid-webhook', handleMobiPaidWebhook);
+router.post('/refund', protect, admin, refundMobiPaidPaymentForBooking);
 router.post('/record', protect, recordPayment);
 router.get('/', protect, admin, getTransactions);
 router.put('/:id/status', protect, admin, updateTransactionStatus);
