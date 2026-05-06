@@ -214,7 +214,7 @@ export const refundMobiPaidPaymentForBooking = async (req: Request, res: Respons
         const refundData = await refundResponse.json();
 
         if (!refundResponse.ok || refundData.result === 'failed') {
-            console.error('MobiPaid refund error:', refundData);
+            // console.error('MobiPaid refund error:', refundData);
             res.status(400).json({ message: refundData.error_message || 'Refund failed' });
             return;
         }
