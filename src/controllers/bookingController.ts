@@ -10,43 +10,135 @@ import PromoCode from '../models/PromoCode';
 // @route   POST /api/v1/bookings
 // @access  Private
 export const createBooking = async (req: Request, res: Response): Promise<void> => {
-    const {
-        carId,
-        startDate,
-        endDate,
-        paymentMethod,
-        driverDetails,
-        pickupLocation,
-        dropoffLocation,
-        extraServices, // Array of { serviceId, quantity }
-        protectionPlanId,
-        promoCode,
-        bookingType, // 'rental' or 'airport_transfer'
-        airportTransferDetails,
-    } = req.body;
+    try {
+        const {
+            carId,
+            startDate,
+            endDate,
+            paymentMethod,
+            driverDetails,
+            pickupLocation,
+            dropoffLocation,
+            extraServices, // Array of { serviceId, quantity }
+            protectionPlanId,
+            promoCode,
+            bookingType, // 'rental' or 'airport_transfer'
+            airportTransferDetails,
+        } = req.body;
 
-    const car = await Car.findById(carId);
+        // Validate required fields
+        if (!carId) {
+            res.status(400).json({ success: false, message: 'Missing required field: carId' });
+            return;
+        }
+        if (!startDate || !endDate) {
+            res.status(400).json({ success: false, message: 'startDate and endDate are required' });
+            return;
+        }
+        if (!paymentMethod) {
+            res.status(400).json({ success: false, message: 'paymentMethod is required' });
+            return;
+        }
+        if (!driverDetails) {
+            res.status(400).json({ success: false, message: 'driverDetails are required' });
+            return;
+        }
 
-    if (!car) {
-        res.status(404).json({ message: 'Car not found' });
-        return;
-    }
+        // Validate paymentMethod
+        const validPaymentMethods = ['mobipaid', 'cash'];
+        if (!validPaymentMethods.includes(paymentMethod)) {
+            res.status(400).json({ success: false, message: `Invalid paymentMethod. Must be one of: ${validPaymentMethods.join(', ')}` });
+            return;
+        }
+
+        // Validate driverDetails required fields - support both name and firstName/lastName
+        if (!driverDetails.phone) {
+            res.status(400).json({ success: false, message: 'Missing required driver detail: phone' });
+            return;
+        }
+
+        // Handle name field - support both 'name' and 'firstName'/'lastName'
+        if (driverDetails.name && !driverDetails.firstName) {
+            const nameParts = driverDetails.name.trim().split(' ');
+            driverDetails.firstName = nameParts[0] || '';
+            driverDetails.lastName = nameParts.slice(1).join(' ') || '';
+        }
+
+        // Validate that we have first and last name
+        if (!driverDetails.firstName || !driverDetails.lastName) {
+            res.status(400).json({ success: false, message: 'Driver name (firstName and lastName) is required' });
+            return;
+        }
+
+        // Validate driver email format if provided
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (driverDetails.email && !emailRegex.test(driverDetails.email)) {
+            res.status(400).json({ success: false, message: 'Invalid driver email format' });
+            return;
+        }
+
+        // Validate driver phone format
+        const phoneRegex = /^[\d\s\+\-\(\)]{7,}$/;
+        if (!phoneRegex.test(driverDetails.phone)) {
+            res.status(400).json({ success: false, message: 'Invalid driver phone number' });
+            return;
+        }
+
+        // Validate ageGroup if provided
+        const validAgeGroups = ['18-29', '30-69', '70+'];
+        if (driverDetails.ageGroup && !validAgeGroups.includes(driverDetails.ageGroup)) {
+            res.status(400).json({ success: false, message: `Invalid age group. Must be one of: ${validAgeGroups.join(', ')}` });
+            return;
+        }
+
+        // Convert age to ageGroup if age is provided instead
+        if (driverDetails.age && !driverDetails.ageGroup) {
+            const age = parseInt(driverDetails.age);
+            if (age < 30) driverDetails.ageGroup = '18-29';
+            else if (age < 70) driverDetails.ageGroup = '30-69';
+            else driverDetails.ageGroup = '70+';
+        }
+
+        // Set default country if not provided
+        if (!driverDetails.country) {
+            driverDetails.country = 'Mauritius';
+        }
+
+        // Validate bookingType
+        const validBookingTypes = ['rental', 'airport_transfer'];
+        if (bookingType && !validBookingTypes.includes(bookingType)) {
+            res.status(400).json({ success: false, message: `Invalid bookingType. Must be one of: ${validBookingTypes.join(', ')}` });
+            return;
+        }
+
+        // Check authentication
+        if (!req.user) {
+            res.status(401).json({ success: false, message: 'Unauthorized' });
+            return;
+        }
+
+        const car = await Car.findById(carId);
+
+        if (!car) {
+            res.status(404).json({ success: false, message: 'Car not found' });
+            return;
+        }
 
     // Calculate days using Luxon in UTC to avoid timezone issues
     const start = DateTime.fromISO(startDate, { zone: 'UTC' }).startOf('day');
     const end = DateTime.fromISO(endDate, { zone: 'UTC' }).startOf('day');
 
-    if (!start.isValid || !end.isValid) {
-        res.status(400).json({ message: 'Invalid booking dates' });
-        return;
-    }
+        if (!start.isValid || !end.isValid) {
+            res.status(400).json({ success: false, message: 'Invalid booking dates' });
+            return;
+        }
 
-    const diffDays = end.diff(start, 'days').days;
+        const diffDays = end.diff(start, 'days').days;
 
-    if (diffDays < 3 && (!bookingType || bookingType === 'rental')) {
-        res.status(400).json({ message: 'Minimum booking duration is 3 days' });
-        return;
-    }
+        if (diffDays < 3 && (!bookingType || bookingType === 'rental')) {
+            res.status(400).json({ success: false, message: 'Minimum booking duration is 3 days' });
+            return;
+        }
 
     // Calculate car price
     let carTotal = 0;
@@ -61,14 +153,25 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
             !airportTransferDetails.customerPhone
         ) {
             res.status(400).json({
+                success: false,
                 message: 'Airport transfer details (type, name, email, phone) are required',
             });
             return;
         }
 
+        // Validate airport transfer email and phone
+        if (!emailRegex.test(airportTransferDetails.customerEmail)) {
+            res.status(400).json({ success: false, message: 'Invalid customer email in airport transfer details' });
+            return;
+        }
+        if (!phoneRegex.test(airportTransferDetails.customerPhone)) {
+            res.status(400).json({ success: false, message: 'Invalid customer phone in airport transfer details' });
+            return;
+        }
+
         const transferPrice = car.airportTransferPrice;
         if (!transferPrice) {
-            res.status(400).json({ message: 'This car does not support airport transfers' });
+            res.status(400).json({ success: false, message: 'This car does not support airport transfers' });
             return;
         }
 
@@ -123,7 +226,7 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
         const plan = await ProtectionPlan.findById(protectionPlanId);
 
         if (!plan) {
-            res.status(400).json({ message: 'Protection plan not found' });
+            res.status(400).json({ success: false, message: 'Protection plan not found' });
             return;
         }
 
@@ -181,22 +284,23 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
         });
 
         if (!promo) {
-            res.status(404).json({ message: 'Invalid or inactive promo code' });
+            res.status(404).json({ success: false, message: 'Invalid or inactive promo code' });
             return;
         }
 
         if (promo.expiryDate < new Date()) {
-            res.status(400).json({ message: 'Promo code expired' });
+            res.status(400).json({ success: false, message: 'Promo code expired' });
             return;
         }
 
         if (promo.maxUsage && promo.usedCount >= promo.maxUsage) {
-            res.status(400).json({ message: 'Promo code usage limit reached' });
+            res.status(400).json({ success: false, message: 'Promo code usage limit reached' });
             return;
         }
 
         if (promo.minOrderValue && subtotalBeforePromo < promo.minOrderValue) {
             res.status(400).json({
+                success: false,
                 message: `Minimum order value of ${promo.minOrderValue} required`,
             });
             return;
@@ -250,7 +354,14 @@ export const createBooking = async (req: Request, res: Response): Promise<void> 
     });
 
     const createdBooking = await booking.save();
-    res.status(201).json(createdBooking);
+    res.status(201).json({ success: true, data: createdBooking });
+    } catch (error: any) {
+        console.error('Booking creation error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Server error during booking creation',
+        });
+    }
 };
 
 // @desc    Get all bookings with filters and pagination
