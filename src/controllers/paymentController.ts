@@ -24,6 +24,7 @@ export const createMobiPaidPaymentRequest = async (req: Request, res: Response) 
 
     console.log("api key", mobiPaidApiKey);
     console.log("mode", mobiPaidMode);
+    console.log("base url", mobiPaidBaseUrl);
 
     const booking = await Booking.findById(bookingId);
 
