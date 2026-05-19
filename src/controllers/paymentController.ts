@@ -35,27 +35,6 @@ export const createMobiPaidPaymentRequest = async (req: Request, res: Response) 
 
     const user = req.user as any;
 
-    const customerIp = req.headers['x-forwarded-for']?.toString().split(',')[0].trim() || req.ip || req.socket.remoteAddress || '';
-
-    const payload = {
-        request_methods: ['WEB'],
-        reference_number: booking._id.toString(),
-        email: user.email,
-        customer_first_name: user.name?.split(' ')[0] || 'Customer',
-        customer_last_name: user.name?.split(' ').slice(1).join(' ') || '',
-        customer_ip: customerIp,
-        redirect_url: `${process.env.FRONTEND_URL}/bookings/${booking._id}?payment=processing`,
-        response_url: `${process.env.BACKEND_URL}/api/v1/payments/mobipaid-webhook`,
-        cancel_url: `${process.env.FRONTEND_URL}/bookings/${booking._id}?payment=cancelled`,
-        fixed_amount: true,
-        currency: 'MUR',
-        amount: booking.totalPrice,
-        payment_type: 'DB',
-        payment_methods: [],
-    };
-
-    console.log('Payload:', payload);
-
     try {
         const response = await fetch(`${mobiPaidBaseUrl}/v2/payment-requests/`, {
     method: 'POST',
@@ -70,7 +49,6 @@ export const createMobiPaidPaymentRequest = async (req: Request, res: Response) 
         email: user.email,
         customer_first_name: user.name?.split(' ')[0] || 'Customer',
         customer_last_name: user.name?.split(' ').slice(1).join(' ') || '',
-        customer_ip: customerIp,
         redirect_url: `${process.env.FRONTEND_URL}/bookings/${booking._id}?payment=processing`,
         response_url: `${process.env.BACKEND_URL}/api/v1/payments/mobipaid-webhook`,
         cancel_url: `${process.env.FRONTEND_URL}/bookings/${booking._id}?payment=cancelled`,
