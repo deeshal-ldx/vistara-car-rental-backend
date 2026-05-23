@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import Transaction from '../models/Transaction';
 import Booking from '../models/Booking';
-import { getClientIp } from '../utils/getClientIp';
 
 const mobiPaidApiKey = process.env.MOBI_PAID_API_KEY;
 const mobiPaidMode = process.env.MOBI_PAID_MODE || 'test';
@@ -36,15 +35,6 @@ export const createMobiPaidPaymentRequest = async (req: Request, res: Response) 
     }
 
     const user = req.user as any;
-    const clientIp = getClientIp(req);
-
-    if (!clientIp) {
-        res.status(400).json({
-            message:
-                'Could not determine your IP address for payment processing. Disable VPN/proxy and try again.',
-        });
-        return;
-    }
 
     const frontendUrl = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
     const backendUrl = (process.env.BACKEND_URL || '').replace(/\/$/, '');
@@ -69,7 +59,7 @@ export const createMobiPaidPaymentRequest = async (req: Request, res: Response) 
         email: user.email,
         customer_first_name: user.name?.split(' ')[0] || 'Customer',
         customer_last_name: user.name?.split(' ').slice(1).join(' ') || '',
-        customer_ip: clientIp,
+        // Do not send customer_ip — MobiPaid test/live rejects it for this merchant ("customer_ip is not allowed")
         redirect_url: `${frontendUrl}/booking?payment=processing&bookingId=${booking._id}`,
         response_url: `${backendUrl}/api/v1/payments/mobipaid-webhook`,
         cancel_url: `${frontendUrl}/booking?payment=cancelled&bookingId=${booking._id}`,
@@ -94,7 +84,7 @@ export const createMobiPaidPaymentRequest = async (req: Request, res: Response) 
         console.log('MobiPaid response:', data);
 
         if (!response.ok || data.result === 'failed') {
-            console.error('MobiPaid error:', data, { clientIp });
+            console.error('MobiPaid error:', data);
             const message = data.error_message || 'Failed to create payment request';
             res.status(400).json({
                 message,
