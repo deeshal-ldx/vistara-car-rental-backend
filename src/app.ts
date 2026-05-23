@@ -19,6 +19,9 @@ import uploadRoutes from './routes/uploadRoutes';
 
 const app: Application = express();
 
+// Required when deployed behind Cloudflare, nginx, or a load balancer
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(express.json());
 const defaultAllowedOrigins = [
@@ -26,6 +29,7 @@ const defaultAllowedOrigins = [
     'https://vistaracarrentalmauritius.com',
     'https://www.vistaracarrentalmauritius.com',
     'http://localhost:3000',
+    'http://localhost:3010',
     'http://localhost:5173',
 ];
 
