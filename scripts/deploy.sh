@@ -106,7 +106,16 @@ run_as_deploy_user "pm2 save"
 
 if [[ -n "${HEALTH_URL}" ]]; then
   log "Health check: ${HEALTH_URL}"
-  if curl -sf "${HEALTH_URL}" >/dev/null; then
+  health_ok=0
+  for i in 1 2 3 4 5; do
+    sleep 2
+    if curl -sf "${HEALTH_URL}" >/dev/null; then
+      health_ok=1
+      break
+    fi
+    log "Waiting for API... (attempt ${i}/5)"
+  done
+  if [[ "${health_ok}" -eq 1 ]]; then
     curl -s "${HEALTH_URL}"
     echo ""
     log "Deploy complete — health OK"
