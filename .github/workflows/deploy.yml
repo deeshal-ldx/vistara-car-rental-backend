@@ -19,13 +19,5 @@ jobs:
 
           script: |
             cd /home/vistara/vistara-car-rental-backend
-
-            git pull origin main
-
-            npm install
-
-            # restart safely (fixes missing process issue)
-            pm2 restart vistara-car-rental-backend --update-env || \
-            pm2 start npm --name "vistara-car-rental-backend" -- start
-
-            pm2 save
+            chmod +x scripts/deploy.sh
+            ./scripts/deploy.sh
