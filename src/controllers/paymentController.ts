@@ -4,8 +4,14 @@ import Transaction from '../models/Transaction';
 import Booking from '../models/Booking';
 
 const mobiPaidApiKey = process.env.MOBI_PAID_API_KEY;
-const mobiPaidMode = process.env.MOBI_PAID_MODE || 'test';
-const mobiPaidBaseUrl = mobiPaidMode === 'live' ? 'https://live.mobipaid.io' : 'https://test.mobipaid.io';
+const mobiPaidMode = (process.env.MOBI_PAID_MODE || 'test').toLowerCase();
+const mobiPaidIsLive =
+    mobiPaidMode === 'live' ||
+    mobiPaidMode === 'production' ||
+    mobiPaidApiKey?.startsWith('mp_live_') === true;
+const mobiPaidBaseUrl = mobiPaidIsLive
+    ? 'https://live.mobipaid.io'
+    : 'https://test.mobipaid.io';
 
 if (!mobiPaidApiKey) {
     console.warn('MOBI_PAID_API_KEY is not set. MobiPaid payments are disabled.');
