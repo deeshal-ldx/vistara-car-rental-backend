@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import mongoose from 'mongoose';
 import Transaction from '../models/Transaction';
 import Booking from '../models/Booking';
+import { getClientIp } from '../utils/getClientIp';
 
 const mobiPaidApiKey = process.env.MOBI_PAID_API_KEY;
 const mobiPaidMode = process.env.MOBI_PAID_MODE || 'test';
@@ -35,38 +36,70 @@ export const createMobiPaidPaymentRequest = async (req: Request, res: Response) 
     }
 
     const user = req.user as any;
+    const clientIp = getClientIp(req);
 
-    try {
-        const response = await fetch(`${mobiPaidBaseUrl}/v2/payment-requests/`, {
-    method: 'POST',
-    headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${mobiPaidApiKey}`, // ✅ NOT Bearer
-    },
-    body: JSON.stringify({
-        access_key: mobiPaidApiKey, // ✅ ALSO REQUIRED
+    if (!clientIp) {
+        res.status(400).json({
+            message:
+                'Could not determine your IP address for payment processing. Disable VPN/proxy and try again.',
+        });
+        return;
+    }
+
+    const frontendUrl = (process.env.FRONTEND_URL || '').replace(/\/$/, '');
+    const backendUrl = (process.env.BACKEND_URL || '').replace(/\/$/, '');
+
+    if (
+        process.env.NODE_ENV === 'production' &&
+        (!frontendUrl || !backendUrl || backendUrl.includes('localhost'))
+    ) {
+        console.error(
+            'MobiPaid misconfiguration: set FRONTEND_URL and BACKEND_URL to public HTTPS URLs on production.',
+        );
+        res.status(500).json({
+            message: 'Payment gateway is misconfigured on the server. Contact support.',
+        });
+        return;
+    }
+
+    const paymentBody: Record<string, unknown> = {
+        access_key: mobiPaidApiKey,
         request_methods: ['WEB'],
         reference_number: booking._id.toString(),
         email: user.email,
         customer_first_name: user.name?.split(' ')[0] || 'Customer',
         customer_last_name: user.name?.split(' ').slice(1).join(' ') || '',
-        redirect_url: `${process.env.FRONTEND_URL}/bookings/${booking._id}?payment=processing`,
-        response_url: `${process.env.BACKEND_URL}/api/v1/payments/mobipaid-webhook`,
-        cancel_url: `${process.env.FRONTEND_URL}/bookings/${booking._id}?payment=cancelled`,
+        customer_ip: clientIp,
+        redirect_url: `${frontendUrl}/booking?payment=processing&bookingId=${booking._id}`,
+        response_url: `${backendUrl}/api/v1/payments/mobipaid-webhook`,
+        cancel_url: `${frontendUrl}/booking?payment=cancelled&bookingId=${booking._id}`,
         fixed_amount: true,
         currency: 'MUR',
         amount: booking.totalPrice,
         payment_type: 'DB',
         payment_methods: [],
-    }),
-});
+    };
+
+    try {
+        const response = await fetch(`${mobiPaidBaseUrl}/v2/payment-requests/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${mobiPaidApiKey}`,
+            },
+            body: JSON.stringify(paymentBody),
+        });
 
         const data = await response.json();
         console.log('MobiPaid response:', data);
 
         if (!response.ok || data.result === 'failed') {
-            console.error('MobiPaid error:', data);
-            res.status(400).json({ message: data.error_message || 'Failed to create payment request' });
+            console.error('MobiPaid error:', data, { clientIp });
+            const message = data.error_message || 'Failed to create payment request';
+            res.status(400).json({
+                message,
+                code: data.result_code,
+            });
             return;
         }
 
